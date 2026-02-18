@@ -1,0 +1,246 @@
+{
+    "docsUrl": "https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.webhook/",
+    "nodes": [
+        {
+            "parameters": {
+                "path": "g2-content-draft",
+                "responseMode": "lastNode",
+                "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Webhook Content Gen",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const personas = {\n  \"Raga Plus ID\": \"Energetic, fun, Gen-Z slang.\",\n  \"Kultur AI\": \"Deep, storytelling, emotional.\",\n  \"default\": \"Professional, informative.\"\n};\nconst medias = $json.body.medias || [];\nconst article = $json.body.article || {};\nconst type = $json.body.type || 'Carousel Image';\n\nreturn medias.map(m => ({\n  json: {\n    media: m,\n    persona: personas[m] || personas['default'],\n    headline: article.headline,\n    body: article.body,\n    type: type\n  }\n}));"
+            },
+            "id": "assign-personas",
+            "name": "Assign Personas",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "dataType": "string",
+                "value1": "={{ $json.type.toLowerCase() }}",
+                "rules": {
+                    "rules": [
+                        {
+                            "operation": "contains",
+                            "value2": "carousel"
+                        },
+                        {
+                            "operation": "contains",
+                            "value2": "image"
+                        },
+                        {
+                            "operation": "contains",
+                            "value2": "video"
+                        }
+                    ]
+                },
+                "fallbackOutput": 1
+            },
+            "id": "router-type",
+            "name": "Router Type",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4o",
+                "messages": {
+                    "values": [
+                        {
+                            "content": "Create 5-slide carousel for {{ $json.media }}. Persona: {{ $json.persona }}. Headline: {{ $json.headline }}. Body: {{ $json.body }}. Return JSON with fields: headline, caption, slide_1_text...slide_5_text."
+                        }
+                    ]
+                },
+                "jsonOutput": true
+            },
+            "id": "llm-carousel",
+            "name": "LLM Carousel",
+            "type": "n8n-nodes-base.openAi",
+            "typeVersion": 1,
+            "position": [
+                750,
+                180
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4o",
+                "messages": {
+                    "values": [
+                        {
+                            "content": "Create single post caption for {{ $json.media }}. Persona: {{ $json.persona }}. Headline: {{ $json.headline }}. Return JSON with fields: text_1 (title), text_2 (caption)."
+                        }
+                    ]
+                },
+                "jsonOutput": true
+            },
+            "id": "llm-single",
+            "name": "LLM Single Post",
+            "type": "n8n-nodes-base.openAi",
+            "typeVersion": 1,
+            "position": [
+                750,
+                420
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "combine",
+                "mergeByFields": {
+                    "values": [
+                        {
+                            "field1": "media",
+                            "field2": "media"
+                        }
+                    ]
+                }
+            },
+            "id": "merge-results",
+            "name": "Merge",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 2,
+            "position": [
+                1000,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "return {\n  cards: $input.all().map(item => {\n    const json = item.json;\n    // Handle OpenAI Raw Structure\n    if (json.choices && json.choices[0] && json.choices[0].message) {\n      let content = json.choices[0].message.content;\n      if (typeof content === 'string') {\n         try { content = JSON.parse(content); } catch(e) {}\n      }\n      return content;\n    }\n    return json;\n  })\n};"
+            },
+            "id": "format-response",
+            "name": "Format Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1200,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "options": {}
+            },
+            "id": "respond-webhook",
+            "name": "Respond Webhook",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                1400,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook Content Gen": {
+            "main": [
+                [
+                    {
+                        "node": "Assign Personas",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Assign Personas": {
+            "main": [
+                [
+                    {
+                        "node": "Router Type",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Router Type": {
+            "main": [
+                [
+                    {
+                        "node": "LLM Carousel",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "LLM Single Post",
+                        "type": "main",
+                        "index": 1
+                    }
+                ],
+                [
+                    {
+                        "node": "LLM Single Post",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "LLM Carousel": {
+            "main": [
+                [
+                    {
+                        "node": "Merge",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "LLM Single Post": {
+            "main": [
+                [
+                    {
+                        "node": "Merge",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Merge": {
+            "main": [
+                [
+                    {
+                        "node": "Format Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Response": {
+            "main": [
+                [
+                    {
+                        "node": "Respond Webhook",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

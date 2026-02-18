@@ -1,0 +1,151 @@
+{
+    "nodes": [
+        {
+            "parameters": {
+                "fieldToSplitOut": "jobs",
+                "options": {}
+            },
+            "id": "18f5d721-split-jobs",
+            "name": "Split Jobs",
+            "type": "n8n-nodes-base.splitInBatches",
+            "typeVersion": 3,
+            "position": [
+                460,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "dataType": "string",
+                "value1": "={{ $json.template_id }}",
+                "rules": {
+                    "rules": [
+                        {
+                            "operation": "contains",
+                            "value2": "article",
+                            "output": 0
+                        },
+                        {
+                            "operation": "contains",
+                            "value2": "carousel",
+                            "output": 1
+                        }
+                    ]
+                }
+            },
+            "id": "router-content-type",
+            "name": "Router: Type?",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 3,
+            "position": [
+                700,
+                300
+            ],
+            "notes": "Route 0: Article\nRoute 1: Carousel"
+        },
+        {
+            "parameters": {
+                "values": {
+                    "string": [
+                        {
+                            "name": "final_title",
+                            "value": "={{ $json.fields.text_1 }}"
+                        },
+                        {
+                            "name": "final_content",
+                            "value": "={{ $json.fields.text_2 }}"
+                        },
+                        {
+                            "name": "featured_image",
+                            "value": "={{ $json.fields.image_1 }}"
+                        },
+                        {
+                            "name": "media_outlet",
+                            "value": "={{ $json.media }}"
+                        },
+                        {
+                            "name": "editor_email",
+                            "value": "={{ $('Webhook').item.json.editor }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "format-article",
+            "name": "Format Article Data",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3.4,
+            "position": [
+                960,
+                180
+            ],
+            "notes": "WF2: Article Processing"
+        },
+        {
+            "parameters": {
+                "content": "## SINI TEMPAT SAVE KE DATABASE\n\nSambungkan node ini ke destination Article kamu, misalnya:\n- **Supabase** (Insert Row)\n- **Wordpress** (Create Post)\n- **Google Docs** (Append Text)",
+                "height": 248,
+                "width": 376
+            },
+            "id": "note-destination",
+            "name": "Sticky Note",
+            "type": "n8n-nodes-base.stickyNote",
+            "typeVersion": 1,
+            "position": [
+                1180,
+                140
+            ]
+        },
+        {
+            "parameters": {
+                "path": "one-click-production",
+                "responseMode": "lastNode",
+                "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                220,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Split Jobs",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Split Jobs": {
+            "main": [
+                [
+                    {
+                        "node": "Router: Type?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Router: Type?": {
+            "main": [
+                [
+                    {
+                        "node": "Format Article Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                []
+            ]
+        }
+    }
+}

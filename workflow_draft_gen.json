@@ -1,0 +1,253 @@
+{
+    "nodes": [
+        {
+            "parameters": {
+                "path": "g2-content-draft",
+                "responseMode": "lastNode",
+                "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Webhook Content Gen",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                220,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Persona Definitions\nconst personas = {\n  \"Raga Plus ID\": \"Energetic, fun, Gen-Z slang (lo/gue), trendy hooks.\",\n  \"Kultur AI\": \"Deep, storytelling, emotional, reflective, human interest.\",\n  \"Red Talks ID\": \"Bold, controversial, direct, masculine tone.\",\n  \"Bersama Teddy\": \"Fatherly, wise, calm, advisory.\",\n  \"Fox Populi\": \"Satirical, witty, smart, critical, humorous.\",\n  \"Tech Bros\": \"Tech-savvy, futuristic, analytical, informative.\",\n  \"default\": \"Professional, informative, neutral tone.\"\n};\n\n// Input\nconst medias = $json.body.medias || [];\nconst article = $json.body.article || {};\nconst type = $json.body.type || 'Carousel Image';\n\n// Create tasks - ONE per Media\nreturn medias.map(m => ({\n  json: {\n    media: m,\n    persona: personas[m] || personas['default'],\n    headline: article.headline,\n    body: article.body,\n    type: type\n  }\n}));"
+            },
+            "id": "assign-personas",
+            "name": "Assign Personas (Split Jobs)",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                460,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "dataType": "string",
+                "value1": "={{ $json.type.toLowerCase() }}",
+                "rules": {
+                    "rules": [
+                        {
+                            "operation": "contains",
+                            "value2": "carousel",
+                            "output": 0
+                        },
+                        {
+                            "operation": "contains",
+                            "value2": "video",
+                            "output": 1
+                        },
+                        {
+                            "operation": "contains",
+                            "value2": "article",
+                            "output": 2
+                        }
+                    ]
+                },
+                "fallbackOutput": 1
+            },
+            "id": "router-type",
+            "name": "Router: Content Type",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 3,
+            "position": [
+                680,
+                300
+            ],
+            "notes": "0: Carousel\n1: Single/Video (Caption)\n2: Article"
+        },
+        {
+            "parameters": {
+                "resource": "chat",
+                "model": "gpt-4o",
+                "jsonOutput": true,
+                "messages": {
+                    "values": [
+                        {
+                            "content": "Professional Content Creator for '{{ $json.media }}'.\nPersona: {{ $json.persona }}\nTask: Create a **5-Slide Carousel** script.\n\nSource Headline: {{ $json.headline }}\nSource Body: {{ $json.body }}\n\nOutput JSON:\n{\n  \"media\": \"{{ $json.media }}\",\n  \"fields\": {\n    \"headline\": \"Hooky Title (Persona Style)\",\n    \"caption\": \"Short engaging caption (max 2 sentences)\",\n    \"slide_1_text\": \"Slide 1: Intro/Hook\",\n    \"slide_2_text\": \"Slide 2: Main Point 1\",\n    \"slide_3_text\": \"Slide 3: Main Point 2\",\n    \"slide_4_text\": \"Slide 4: Main Point 3\",\n    \"slide_5_text\": \"Slide 5: Conclusion/CTA\"\n  }\n}"
+                        }
+                    ]
+                }
+            },
+            "id": "llm-carousel",
+            "name": "LLM: Carousel Writer",
+            "type": "n8n-nodes-base.openAi",
+            "typeVersion": 1,
+            "position": [
+                920,
+                180
+            ]
+        },
+        {
+            "parameters": {
+                "resource": "chat",
+                "model": "gpt-4o",
+                "jsonOutput": true,
+                "messages": {
+                    "values": [
+                        {
+                            "content": "Professional Content Creator for '{{ $json.media }}'.\nPersona: {{ $json.persona }}\nTask: Create a **Single Post Caption**.\n\nSource Headline: {{ $json.headline }}\nSource Body: {{ $json.body }}\n\nOutput JSON:\n{\n  \"media\": \"{{ $json.media }}\",\n  \"fields\": {\n    \"text_1\": \"Hooky Title (Persona Style)\",\n    \"text_2\": \"Engaging Caption / Body Text (Persona Style)\",\n    \"image_1\": \"Suggested Image Prompt (Optional)\"\n  }\n}"
+                        }
+                    ]
+                }
+            },
+            "id": "llm-single",
+            "name": "LLM: Single Post Writer",
+            "type": "n8n-nodes-base.openAi",
+            "typeVersion": 1,
+            "position": [
+                920,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "combine",
+                "mergeByFields": {
+                    "values": [
+                        {
+                            "field1": "media",
+                            "field2": "media"
+                        }
+                    ]
+                },
+                "recommend": "keepEverything",
+                "options": {}
+            },
+            "id": "merge-results",
+            "name": "Merge Results",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 3,
+            "position": [
+                1180,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Ensure we return a clean 'cards' array\nreturn {\n  cards: $input.all().map(item => item.json)\n};"
+            },
+            "id": "format-response",
+            "name": "Format Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1380,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "options": {}
+            },
+            "id": "respond-webhook",
+            "name": "Respond to Webhook",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                1580,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook Content Gen": {
+            "main": [
+                [
+                    {
+                        "node": "Assign Personas (Split Jobs)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Assign Personas (Split Jobs)": {
+            "main": [
+                [
+                    {
+                        "node": "Router: Content Type",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Router: Content Type": {
+            "main": [
+                [
+                    {
+                        "node": "LLM: Carousel Writer",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "LLM: Single Post Writer",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "LLM: Single Post Writer",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "LLM: Carousel Writer": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Results",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "LLM: Single Post Writer": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Results",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Merge Results": {
+            "main": [
+                [
+                    {
+                        "node": "Format Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Response": {
+            "main": [
+                [
+                    {
+                        "node": "Respond to Webhook",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

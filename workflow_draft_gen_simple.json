@@ -1,0 +1,212 @@
+{
+    "docsUrl": "https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.webhook/",
+    "nodes": [
+        {
+            "parameters": {
+                "path": "g2-content-draft",
+                "responseMode": "lastNode",
+                "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Webhook Content Gen",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const personas = {\n  \"Raga Plus ID\": \"Energetic, fun, Gen-Z slang.\",\n  \"Kultur AI\": \"Deep, storytelling, emotional.\",\n  \"default\": \"Professional, informative.\"\n};\nconst medias = $json.body.medias || [];\nconst article = $json.body.article || {};\nconst type = $json.body.type || 'Carousel Image';\n\nreturn medias.map(m => ({\n  json: {\n    media: m,\n    persona: personas[m] || personas['default'],\n    headline: article.headline,\n    body: article.body,\n    type: type\n  }\n}));"
+            },
+            "id": "assign-personas",
+            "name": "Assign Personas (Code)",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "dataType": "string",
+                "value1": "={{ $json.type }}",
+                "rules": {
+                    "rules": [
+                        {
+                            "operation": "contains",
+                            "value2": "Carousel"
+                        },
+                        {
+                            "operation": "contains",
+                            "value2": "Single"
+                        }
+                    ]
+                }
+            },
+            "id": "router-type",
+            "name": "Router Type",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4o",
+                "active": true,
+                "messages": {
+                    "values": [
+                        {
+                            "content": "Create 5-slide carousel for {{ $json.media }}. Persona: {{ $json.persona }}. Headline: {{ $json.headline }}. Body: {{ $json.body }}. Return JSON with fields: headline, caption, slide_1_text...slide_5_text."
+                        }
+                    ]
+                },
+                "jsonOutput": true
+            },
+            "id": "llm-carousel",
+            "name": "LLM Carousel",
+            "type": "n8n-nodes-base.openAi",
+            "typeVersion": 1,
+            "position": [
+                750,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4o",
+                "active": true,
+                "messages": {
+                    "values": [
+                        {
+                            "content": "Create single post caption for {{ $json.media }}. Persona: {{ $json.persona }}. Headline: {{ $json.headline }}. Return JSON with fields: text_1 (title), text_2 (caption)."
+                        }
+                    ]
+                },
+                "jsonOutput": true
+            },
+            "id": "llm-single",
+            "name": "LLM Single Post",
+            "type": "n8n-nodes-base.openAi",
+            "typeVersion": 1,
+            "position": [
+                750,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "combine",
+                "mergeByFields": {
+                    "values": [
+                        {
+                            "field1": "media",
+                            "field2": "media"
+                        }
+                    ]
+                }
+            },
+            "id": "merge-results",
+            "name": "Merge",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 2,
+            "position": [
+                1000,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "options": {}
+            },
+            "id": "respond-webhook",
+            "name": "Respond Webhook",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                1200,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook Content Gen": {
+            "main": [
+                [
+                    {
+                        "node": "Assign Personas (Code)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Assign Personas (Code)": {
+            "main": [
+                [
+                    {
+                        "node": "Router Type",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Router Type": {
+            "main": [
+                [
+                    {
+                        "node": "LLM Carousel",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "LLM Single Post",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "LLM Carousel": {
+            "main": [
+                [
+                    {
+                        "node": "Merge",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "LLM Single Post": {
+            "main": [
+                [
+                    {
+                        "node": "Merge",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Merge": {
+            "main": [
+                [
+                    {
+                        "node": "Respond Webhook",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

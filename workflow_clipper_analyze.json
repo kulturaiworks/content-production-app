@@ -1,0 +1,411 @@
+{
+    "name": "Clipper Scouting - Analyze YouTube (Apify + AssemblyAI)",
+    "nodes": [
+        {
+            "parameters": {
+                "path": "g2-clipper-scouting",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "node-001",
+            "name": "Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                200,
+                300
+            ],
+            "webhookId": "g2-clipper-scouting"
+        },
+        {
+            "parameters": {
+                "jsCode": "// NODE 2: Extract Video ID dari YouTube URL\nconst body = items[0].json.body || items[0].json;\nconst url = body.youtube_link || '';\nlet videoId = null;\n\nif (url) {\n  const cleanUrl = url.trim();\n  const regExp = /^.*(youtu\\.be\\/|v\\/|u\\/\\w\\/|embed\\/|watch\\?v=|&v=)([^#&?]*).*/;\n  const match = cleanUrl.match(regExp);\n  if (match && match[2]) {\n    videoId = match[2];\n  }\n}\n\nif (!videoId) {\n  throw new Error('Invalid YouTube URL: ' + url);\n}\n\nreturn [{\n  json: {\n    video_id: videoId,\n    ip_media: body.ip_media || 'Unknown',\n    content_type: body.content_type || 'Clipper'\n  }\n}];"
+            },
+            "id": "node-002",
+            "name": "Extract Video ID",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                400,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "=https://api.apify.com/v2/acts/3110o2KuaJfLBjYFU/runs?token=YOUR_APIFY_TOKEN_HERE&waitForFinish=300",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ videoIds: [$json.video_id] }) }}",
+                "options": {
+                    "timeout": 310000
+                }
+            },
+            "id": "node-003",
+            "name": "Apify Run Actor",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                600,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "=https://api.apify.com/v2/key-value-stores/{{ $json.data.defaultKeyValueStoreId }}/keys?token=YOUR_APIFY_TOKEN_HERE",
+                "options": {}
+            },
+            "id": "node-004",
+            "name": "Apify List KV Keys",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                800,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// NODE 5: Cari file audio di KV Store dan buat URL download-nya\nconst data = items[0].json;\nconst kvItems = data.data?.items || data.items || [];\n\n// Cari file audio (.mp3, .m4a, .webm, .wav, .ogg)\nconst audioExtensions = ['.mp3', '.m4a', '.webm', '.wav', '.ogg', '.aac'];\nconst audioFile = kvItems.find(item => {\n  const key = (item.key || '').toLowerCase();\n  return audioExtensions.some(ext => key.endsWith(ext)) || \n         (item.contentType && item.contentType.includes('audio'));\n});\n\nif (!audioFile) {\n  // Fallback: coba ambil dari dataset\n  const keys = kvItems.map(i => i.key).join(', ');\n  throw new Error('Audio file not found in KV Store. Available keys: ' + keys + '. Pastikan Actor Apify berhasil download audio.');\n}\n\n// Bangun URL publik untuk download audio dari KV Store\nconst kvStoreId = $node['Apify Run Actor'].json.data.defaultKeyValueStoreId;\nconst audioKey = audioFile.key;\nconst audioUrl = 'https://api.apify.com/v2/key-value-stores/' + kvStoreId + '/records/' + encodeURIComponent(audioKey) + '?token=YOUR_APIFY_TOKEN_HERE';\n\nreturn [{\n  json: {\n    audioUrl: audioUrl,\n    audioKey: audioKey,\n    video_id: $node['Extract Video ID'].json.video_id\n  }\n}];"
+            },
+            "id": "node-005",
+            "name": "Extract Audio URL",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1000,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.assemblyai.com/v2/transcript",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "authorization",
+                            "value": "YOUR_ASSEMBLYAI_KEY_HERE"
+                        },
+                        {
+                            "name": "content-type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ audio_url: $json.audioUrl, language_detection: true }) }}",
+                "options": {}
+            },
+            "id": "node-006",
+            "name": "AssemblyAI Submit",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1200,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "amount": 120,
+                "unit": "seconds"
+            },
+            "id": "node-007",
+            "name": "Wait 2 Min",
+            "type": "n8n-nodes-base.wait",
+            "typeVersion": 1.1,
+            "position": [
+                1400,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "=https://api.assemblyai.com/v2/transcript/{{ $node['AssemblyAI Submit'].json.id }}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "authorization",
+                            "value": "YOUR_ASSEMBLYAI_KEY_HERE"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "node-008",
+            "name": "AssemblyAI Get Result",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1600,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": ""
+                    },
+                    "conditions": [
+                        {
+                            "id": "cond-1",
+                            "leftValue": "={{ $json.status }}",
+                            "rightValue": "completed",
+                            "operator": {
+                                "type": "string",
+                                "operation": "equals"
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "id": "node-009",
+            "name": "Is Transcript Ready?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                1800,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// NODE 10: Format AssemblyAI transcript dengan timecodes\nconst data = items[0].json;\n\nif (data.status === 'error') {\n  throw new Error('AssemblyAI transcription failed: ' + (data.error || 'Unknown error'));\n}\n\nconst words = data.words || [];\nconst text = data.text || '';\n\n// Build transcript dengan timestamp per kalimat\nlet transcript = '';\nlet currentSentence = '';\nlet sentenceStartMs = 0;\n\nfor (let i = 0; i < words.length; i++) {\n  const word = words[i];\n  if (currentSentence === '') {\n    sentenceStartMs = word.start;\n  }\n  currentSentence += word.text + ' ';\n\n  const isEndOfSentence = /[.!?]$/.test(word.text);\n  const isLong = currentSentence.split(/\\s+/).length >= 15;\n\n  if (isEndOfSentence || isLong || i === words.length - 1) {\n    const mins = Math.floor(sentenceStartMs / 60000);\n    const secs = Math.floor((sentenceStartMs % 60000) / 1000);\n    const ts = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');\n    transcript += '[' + ts + '] ' + currentSentence.trim() + '\\n';\n    currentSentence = '';\n  }\n}\n\nconst totalMs = words.length > 0 ? words[words.length - 1].end : 0;\nconst totalM = Math.floor(totalMs / 60000);\nconst totalS = Math.floor((totalMs % 60000) / 1000);\n\nreturn [{\n  json: {\n    transcript: transcript,\n    total_duration: String(totalM).padStart(2, '0') + ':' + String(totalS).padStart(2, '0'),\n    word_count: words.length\n  }\n}];"
+            },
+            "id": "node-010",
+            "name": "Format Transcript",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2000,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "prompt": "=You are a professional video content analyst for social media. Analyze the following YouTube video transcript and identify the most engaging, clip-worthy segments suitable for short-form vertical video (Reels/TikTok/Shorts).\n\nEach clip should be between 30 to 90 seconds long.\n\nFor each clip, identify:\n- The key dialog/quote spoken in that segment\n- Start and end timecodes (MM:SS format, based on timestamps in transcript)\n- Duration in seconds\n\nFocus on moments that:\n- Are emotionally impactful, surprising, or controversial\n- Contain valuable insights, tips, or key information\n- Have strong hook potential (compelling first sentence)\n- Are self-contained (makes sense without full context)\n\nReturn ONLY a valid JSON array (NO markdown, NO explanation, NO code blocks):\n[\n  {\n    \"id\": 1,\n    \"dialog\": \"Brief description with a key quote from the segment\",\n    \"timecode_start\": \"MM:SS\",\n    \"timecode_end\": \"MM:SS\",\n    \"duration\": \"XX sec\"\n  }\n]\n\nVideo Duration: {{ $json.total_duration }}\n\nTRANSCRIPT:\n{{ $json.transcript }}",
+                "options": {}
+            },
+            "id": "node-011",
+            "name": "Analyze Content",
+            "type": "@n8n/n8n-nodes-langchain.chainLlm",
+            "typeVersion": 1.4,
+            "position": [
+                2200,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4o-mini",
+                "options": {
+                    "temperature": 0.3
+                }
+            },
+            "id": "node-012",
+            "name": "OpenAI Chat Model",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "typeVersion": 1,
+            "position": [
+                2200,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// NODE 13: Parse output LLM menjadi array clips\nconst text = items[0].json.text || items[0].json.response || items[0].json.output || '';\n\nlet clips = [];\ntry {\n  clips = JSON.parse(text);\n} catch (e) {\n  const match = text.match(/\\[\\s*\\{[\\s\\S]*\\}\\s*\\]/);\n  if (match) {\n    try {\n      clips = JSON.parse(match[0]);\n    } catch (e2) {\n      throw new Error('Gagal parse JSON clips dari LLM: ' + e2.message);\n    }\n  } else {\n    throw new Error('Tidak ditemukan JSON array dalam respons LLM');\n  }\n}\n\nif (!Array.isArray(clips) || clips.length === 0) {\n  throw new Error('LLM mengembalikan array kosong');\n}\n\nconst formatted = clips.map((c, idx) => ({\n  id: c.id || idx + 1,\n  dialog: c.dialog || c.text || c.description || '',\n  timecode_start: c.timecode_start || c.start || '00:00',\n  timecode_end: c.timecode_end || c.end || '00:00',\n  duration: c.duration || '0 sec'\n}));\n\nreturn [{\n  json: {\n    clips: formatted\n  }\n}];"
+            },
+            "id": "node-013",
+            "name": "Parse Clips Output",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2400,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "firstIncomingItem",
+                "options": {}
+            },
+            "id": "node-014",
+            "name": "Respond to Webhook",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.1,
+            "position": [
+                2600,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Extract Video ID",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Video ID": {
+            "main": [
+                [
+                    {
+                        "node": "Apify Run Actor",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Apify Run Actor": {
+            "main": [
+                [
+                    {
+                        "node": "Apify List KV Keys",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Apify List KV Keys": {
+            "main": [
+                [
+                    {
+                        "node": "Extract Audio URL",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Audio URL": {
+            "main": [
+                [
+                    {
+                        "node": "AssemblyAI Submit",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AssemblyAI Submit": {
+            "main": [
+                [
+                    {
+                        "node": "Wait 2 Min",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Wait 2 Min": {
+            "main": [
+                [
+                    {
+                        "node": "AssemblyAI Get Result",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AssemblyAI Get Result": {
+            "main": [
+                [
+                    {
+                        "node": "Is Transcript Ready?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Transcript Ready?": {
+            "main": [
+                [
+                    {
+                        "node": "Format Transcript",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Wait 2 Min",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Transcript": {
+            "main": [
+                [
+                    {
+                        "node": "Analyze Content",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Analyze Content": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Clips Output",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "OpenAI Chat Model": {
+            "ai_languageModel": [
+                [
+                    {
+                        "node": "Analyze Content",
+                        "type": "ai_languageModel",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Clips Output": {
+            "main": [
+                [
+                    {
+                        "node": "Respond to Webhook",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "staticData": null,
+    "tags": [],
+    "triggerCount": 0
+}

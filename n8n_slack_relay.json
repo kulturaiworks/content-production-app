@@ -1,0 +1,64 @@
+{
+    "name": "Slack User Relay",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "slack-relay",
+                "options": {}
+            },
+            "id": "webhook-node",
+            "name": "Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                460,
+                340
+            ]
+        },
+        {
+            "parameters": {
+                "authentication": "oAuth2",
+                "select": "channel",
+                "channelId": {
+                    "__rl": true,
+                    "value": "#joy-clipper",
+                    "mode": "list",
+                    "cachedResultName": "joy-clipper"
+                },
+                "text": "={{ $json.text }}",
+                "otherOptions": {
+                    "link_names": true,
+                    "unfurl_links": true
+                }
+            },
+            "id": "slack-node",
+            "name": "Slack (As User)",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2,
+            "position": [
+                680,
+                340
+            ],
+            "credentials": {
+                "slackOAuth2Api": {
+                    "id": "YOUR_CREDENTIAL_ID",
+                    "name": "Slack User Account"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Slack (As User)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

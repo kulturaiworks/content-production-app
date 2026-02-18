@@ -1,0 +1,401 @@
+{
+    "name": "Copywriting Generator",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "copywriting",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "f1a1a1a1-1111-1111-1111-111111111111",
+            "name": "Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                240,
+                300
+            ],
+            "webhookId": "copywriting"
+        },
+        {
+            "parameters": {
+                "jsCode": "const PERSONAS = {\n  'Raga Plus ID': { voice: 'Profesional namun engaging, berita olahraga', tone: 'Energik, passionate, informatif', audience: 'Fans sepakbola 18-35 tahun', style: 'To the point, emosional saat big moments, sertakan fakta', hashtag: '#sepakbola #timnas #liga1' },\n  'Red Talks ID': { voice: 'Santai, seperti ngobrol teman', tone: 'Kasual, friendly, humor', audience: 'Anak muda 18-30 suka gossip', style: 'Storytelling, bahasa gaul, ajak interaksi', hashtag: '#trending #viral' },\n  'Kultur AI': { voice: 'Edukatif tentang teknologi AI', tone: 'Profesional tapi accessible', audience: 'Tech enthusiasts 20-40 tahun', style: 'Analogi sederhana, future-focused, manfaat praktis', hashtag: '#AI #teknologi' },\n  'Bersama Teddy': { voice: 'Personal, motivational', tone: 'Inspiratif, supportive, empati', audience: '25-45 tahun cari motivasi', style: 'Personal story, refleksi, actionable advice', hashtag: '#motivasi #inspirasi' },\n  'Kami Meutya': { voice: 'Feminine, empowering', tone: 'Warm, supportive, authentic', audience: 'Perempuan 20-35, lifestyle & career', style: 'Relatable, empowering, honest', hashtag: '#perempuan #lifestyle' },\n  'Bocahe Kaesang': { voice: 'Fun, playful, anak muda', tone: 'Ceria, lucu, santai', audience: 'Gen Z 15-30 tahun', style: 'Bahasa gaul, meme-able, banyak emoji', hashtag: '#genZ #FYP' },\n  'Team Pur': { voice: 'Energik, community-driven', tone: 'Enthusiastic, loyal', audience: 'Fans klub, semua usia', style: 'Solidaritas, bangga achievements', hashtag: '#teampur #solidarity' },\n  'Motorell': { voice: 'Maskulin, teknis otomotif', tone: 'Knowledgeable, excited', audience: 'Pria 20-45 pecinta motor', style: 'Spesifikasi teknis, review jujur', hashtag: '#motor #otomotif' },\n  'Fox Populi': { voice: 'Cerdas, kritis, sarkastis', tone: 'Witty, sharp, observant', audience: 'Educated millennials 25-40', style: 'Analisis tajam, humor cerdas', hashtag: '#politik #sosial' },\n  'Whats On': { voice: 'Update event/hiburan', tone: 'Excited, FOMO-inducing', audience: 'Anak muda 18-35 aktif socializing', style: 'Quick info, ajak action', hashtag: '#event #Jakarta' },\n  'Dakwah AI': { voice: 'Religius, bijaksana', tone: 'Respectful, wise, inspirational', audience: 'Muslim 20-50 belajar agama', style: 'Dalil + penjelasan, inspirasi spiritual', hashtag: '#dakwah #islamic' },\n  'Wisato ID': { voice: 'Adventurous, wanderlust', tone: 'Excited, descriptive', audience: 'Traveler 20-40 tahun', style: 'Deskripsi vivid, tips praktis', hashtag: '#travel #explorenusantara' },\n  'Maxi Theory': { voice: 'Intelektual, thought-provoking', tone: 'Analytical, questioning', audience: 'Thinkers 25-50 tahun', style: 'Deep analysis, perspektif beragam', hashtag: '#philosophy #deepthoughts' }\n};\n\nconst input = $input.first().json;\nconst persona = PERSONAS[input.body?.media || input.media] || PERSONAS['Red Talks ID'];\nconst media = input.body?.media || input.media;\nconst model = input.body?.model || input.model;\nconst content = input.body?.content || input.content;\nconst input_type = input.body?.input_type || input.input_type;\n\nconst system_prompt = `Kamu copywriter ahli untuk ${media}.\n\nVoice: ${persona.voice}\nTone: ${persona.tone}\nAudience: ${persona.audience}\nStyle: ${persona.style}\n\nBuat:\n1. 3 headline clickbait (max 60 karakter)\n2. 2 caption Instagram (150-200 kata, include hashtags ${persona.hashtag})\n\nOUTPUT JSON ONLY (tanpa markdown code block):\n{\"headlines\": [\"...\", \"...\", \"...\"], \"captions\": [\"...\", \"...\"]}\n\nPENTING: Bahasa Indonesia, gunakan HANYA fakta dari artikel, jangan halusinasi!`;\n\nreturn [{\n  json: {\n    media,\n    model,\n    content,\n    input_type,\n    persona,\n    system_prompt\n  }\n}];"
+            },
+            "id": "f2a2a2a2-2222-2222-2222-222222222222",
+            "name": "Persona Mapper",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                440,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "rules": {
+                    "values": [
+                        {
+                            "conditions": {
+                                "options": {
+                                    "caseSensitive": true,
+                                    "leftValue": "",
+                                    "typeValidation": "strict"
+                                },
+                                "conditions": [
+                                    {
+                                        "id": "r1",
+                                        "leftValue": "={{ $json.model }}",
+                                        "rightValue": "chatgpt-jina",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ]
+                            },
+                            "renameOutput": true,
+                            "outputKey": "Jina"
+                        },
+                        {
+                            "conditions": {
+                                "options": {
+                                    "caseSensitive": true,
+                                    "leftValue": "",
+                                    "typeValidation": "strict"
+                                },
+                                "conditions": [
+                                    {
+                                        "id": "r2",
+                                        "leftValue": "={{ $json.model }}",
+                                        "rightValue": "chatgpt-firecrawl",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ]
+                            },
+                            "renameOutput": true,
+                            "outputKey": "Firecrawl"
+                        },
+                        {
+                            "conditions": {
+                                "options": {
+                                    "caseSensitive": true,
+                                    "leftValue": "",
+                                    "typeValidation": "strict"
+                                },
+                                "conditions": [
+                                    {
+                                        "id": "r3",
+                                        "leftValue": "={{ $json.model }}",
+                                        "rightValue": "perplexity",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ]
+                            },
+                            "renameOutput": true,
+                            "outputKey": "Perplexity"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "f3a3a3a3-3333-3333-3333-333333333333",
+            "name": "Router",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 3.2,
+            "position": [
+                640,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "=https://r.jina.ai/{{ $json.content }}",
+                "options": {}
+            },
+            "id": "f4a4a4a4-4444-4444-4444-444444444444",
+            "name": "Jina Reader",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                860,
+                160
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.firecrawl.dev/v1/scrape",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer YOUR_FIRECRAWL_API_KEY"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\"url\": \"{{ $json.content }}\", \"formats\": [\"markdown\"]}",
+                "options": {}
+            },
+            "id": "f5a5a5a5-5555-5555-5555-555555555555",
+            "name": "Firecrawl",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                860,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.openai.com/v1/chat/completions",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer YOUR_OPENAI_API_KEY"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.7, messages: [{ role: 'system', content: $('Persona Mapper').item.json.system_prompt }, { role: 'user', content: 'Artikel:\\n' + ($json.data || $json.body || '') }] }) }}",
+                "options": {}
+            },
+            "id": "f6a6a6a6-6666-6666-6666-666666666666",
+            "name": "ChatGPT (Jina)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1060,
+                160
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.openai.com/v1/chat/completions",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer YOUR_OPENAI_API_KEY"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.7, messages: [{ role: 'system', content: $('Persona Mapper').item.json.system_prompt }, { role: 'user', content: 'Artikel:\\n' + ($json.data?.markdown || '') }] }) }}",
+                "options": {}
+            },
+            "id": "f7a7a7a7-7777-7777-7777-777777777777",
+            "name": "ChatGPT (Firecrawl)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1060,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.perplexity.ai/chat/completions",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer YOUR_PERPLEXITY_API_KEY"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ model: 'sonar', temperature: 0.7, messages: [{ role: 'system', content: $json.system_prompt }, { role: 'user', content: 'Cari info terbaru lalu buatkan copywriting tentang: ' + $json.content }] }) }}",
+                "options": {}
+            },
+            "id": "f8a8a8a8-8888-8888-8888-888888888888",
+            "name": "Perplexity",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                860,
+                440
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $input.first().json;\nlet text = '';\n\nif (data.choices && data.choices[0]) {\n  text = data.choices[0].message.content;\n} else if (data.message?.content) {\n  text = data.message.content;\n}\n\nlet result;\ntry {\n  const cleaned = text.replace(/```json\\n?/g, '').replace(/```/g, '').trim();\n  result = JSON.parse(cleaned);\n} catch(e) {\n  const match = text.match(/{[\\s\\S]*}/);\n  if (match) {\n    try { result = JSON.parse(match[0]); } catch(e2) {}\n  }\n}\n\nif (!result?.headlines || !result?.captions) {\n  result = {\n    headlines: ['Error: gagal parse', 'Coba lagi', 'Atau ganti model'],\n    captions: ['LLM response tidak valid. Coba lagi.']\n  };\n}\n\nreturn [{ json: result }];"
+            },
+            "id": "f9a9a9a9-9999-9999-9999-999999999999",
+            "name": "Parse Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1260,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ JSON.stringify($json) }}",
+                "options": {}
+            },
+            "id": "fababab-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            "name": "Respond",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.1,
+            "position": [
+                1460,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Persona Mapper",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Persona Mapper": {
+            "main": [
+                [
+                    {
+                        "node": "Router",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Router": {
+            "main": [
+                [
+                    {
+                        "node": "Jina Reader",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Firecrawl",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Perplexity",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Jina Reader": {
+            "main": [
+                [
+                    {
+                        "node": "ChatGPT (Jina)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Firecrawl": {
+            "main": [
+                [
+                    {
+                        "node": "ChatGPT (Firecrawl)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "ChatGPT (Jina)": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "ChatGPT (Firecrawl)": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Perplexity": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Response": {
+            "main": [
+                [
+                    {
+                        "node": "Respond",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "pinData": {},
+    "tags": []
+}
