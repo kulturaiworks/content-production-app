@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getTemplatesForMedia } from '../data/mediaData'
+import { useTemplates } from '../context/TemplateContext'
 
 export default function Draft() {
+    const { getTemplatesForMedia } = useTemplates()
     const navigate = useNavigate()
     const [drafts, setDrafts] = useState([])
     const [selectedDraft, setSelectedDraft] = useState(null)

@@ -43,7 +43,7 @@ export default function Profile() {
         if (file) {
             const reader = new FileReader()
             reader.onloadend = () => {
-                updateProfile({ photoUrl: reader.result })
+                updateProfile({ photoURL: reader.result })
             }
             reader.readAsDataURL(file)
         }
@@ -65,8 +65,8 @@ export default function Profile() {
                     <form onSubmit={handleSubmit}>
                         <div className="profile-photo-section">
                             <div className="user-avatar" style={{ width: 80, height: 80, fontSize: 28 }}>
-                                {user?.photoUrl ? (
-                                    <img src={user.photoUrl} alt={user.name} />
+                                {user?.photoURL ? (
+                                    <img src={user.photoURL} alt={user.name} />
                                 ) : (
                                     user?.name?.charAt(0)?.toUpperCase() || 'U'
                                 )}

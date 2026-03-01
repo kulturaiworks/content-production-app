@@ -2,14 +2,17 @@ import { useState, useEffect } from 'react'
 import { useProduction } from '../context/ProductionContext'
 import { useAuth } from '../context/AuthContext'
 
-import { MEDIA_LIST, FIXED_CONTENT_TYPES } from '../data/mediaData'
+import { useTemplates } from '../context/TemplateContext'
+import { FIXED_CONTENT_TYPES } from '../data/mediaData'
 import { pollClipperJob } from '../lib/supabase'
 
 // n8n Webhook URL
 const WEBHOOK_RENDER = import.meta.env.VITE_WEBHOOK_CLIPPER // For rendering (production)
 const WEBHOOK_ANALYZE_URL = import.meta.env.VITE_WEBHOOK_CLIPPER_ANALYZE // For analysis (scouting)
+const PRE_PRODS_WEBHOOK = import.meta.env.VITE_WEBHOOK_PRE_PRODS
 
 export default function ClipperTools() {
+    const { mediaList: MEDIA_LIST } = useTemplates()
     const { status, setStatus, setOutput, setError, reset, startPolling, startJob } = useProduction()
     const { user, incrementWorkCount } = useAuth()
 
@@ -203,11 +206,10 @@ export default function ClipperTools() {
         )
     }
 
-    // Send selected clips to Joy via Slack
-    const sendToJoy = async () => {
-        const SLACK_WEBHOOK = import.meta.env.VITE_SLACK_CLIPPER_WEBHOOK
-        if (!SLACK_WEBHOOK) {
-            alert('Missing VITE_SLACK_CLIPPER_WEBHOOK env variable')
+    // Render selected clips
+    const handleRender = async () => {
+        if (!PRE_PRODS_WEBHOOK) {
+            alert('Missing VITE_WEBHOOK_PRE_PRODS env variable')
             return
         }
 
@@ -216,25 +218,31 @@ export default function ClipperTools() {
         setStatus('sending')
 
         try {
-            const clipLines = selected.map((clip, i) =>
-                `*Clip ${i + 1}: ${clip.title}*\n⏱ ${clip.timecode_start} → ${clip.timecode_end} (${clip.duration})\n🔥 Virality: ${clip.virality_score}/10`
-            ).join('\n\n')
+            const clipData = selected.map((clip, i) => ({
+                clip_number: i + 1,
+                title: clip.title,
+                timecode_start: clip.timecode_start,
+                timecode_end: clip.timecode_end,
+                duration: clip.duration,
+                virality_score: clip.virality_score
+            }))
 
-            const userMention = user?.slackMemberId ? `<@${user.slackMemberId}>` : (user?.email || 'Unknown')
-
-            await fetch(SLACK_WEBHOOK, {
+            const response = await fetch(PRE_PRODS_WEBHOOK, {
                 method: 'POST',
-                mode: 'no-cors',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    text: `🎬 *CLIP REQUEST*\n\n📺 *Video:* ${youtubeLink}\n🏷️ *Media:* ${selectedMedia}\n👤 *Requester:* ${userMention}\n\n${clipLines}\n\ncc: <@U0AD664M60J>`
+                    ip_media: selectedMedia,
+                    output_format: 'Render Clip',
+                    link: youtubeLink,
+                    clips: clipData
                 })
             })
 
-            // no-cors = opaque response, tapi request tetap terkirim
+            if (!response.ok) throw new Error(`Request failed: ${response.statusText}`)
+
             setStatus('done')
         } catch (error) {
-            console.error('Slack webhook error:', error)
+            console.error('Render error:', error)
             setError(error.message)
             setStatus('error')
         }
@@ -267,8 +275,8 @@ export default function ClipperTools() {
                 <div className="phase-connector"></div>
                 <div className={`phase-item ${phase === 2 ? 'active' : ''}`}>
                     <span className="phase-number">2</span>
-                    <span className="phase-label-desktop">Send to Joy</span>
-                    <span className="phase-label-mobile" style={{ display: 'none' }}>Send</span>
+                    <span className="phase-label-desktop">Render</span>
+                    <span className="phase-label-mobile" style={{ display: 'none' }}>Render</span>
                 </div>
             </div>
 
@@ -323,7 +331,7 @@ export default function ClipperTools() {
                                     </button>
                                     <button
                                         className="btn btn-primary mobile-full-btn"
-                                        onClick={sendToJoy}
+                                        onClick={handleRender}
                                         disabled={selectedClips.length === 0}
                                         style={{
                                             padding: '10px 24px',
@@ -336,7 +344,7 @@ export default function ClipperTools() {
                                             gap: '8px'
                                         }}
                                     >
-                                        <span>🤖</span> Send {selectedClips.length} Clip{selectedClips.length !== 1 ? 's' : ''}
+                                        <span>🎬</span> Render {selectedClips.length} Clip{selectedClips.length !== 1 ? 's' : ''}
                                     </button>
                                 </div>
                             </div>
@@ -438,14 +446,14 @@ export default function ClipperTools() {
                 {phase === 2 && (
                     <>
                         <div className="card-header">
-                            <h2 className="card-title">Phase 2: Send to Joy</h2>
+                            <h2 className="card-title">Phase 2: Render</h2>
                         </div>
 
                         {status === 'done' ? (
                             <div className="render-success">
-                                <div className="success-icon" style={{ fontSize: 48 }}>🤖</div>
-                                <h4>Sent to Joy!</h4>
-                                <p className="text-secondary">{selectedClips.length} clip(s) sent via Slack. Joy will process them shortly.</p>
+                                <div className="success-icon" style={{ fontSize: 48 }}>🎬</div>
+                                <h4>Render Request Sent!</h4>
+                                <p className="text-secondary">{selectedClips.length} clip(s) submitted for rendering.</p>
 
                                 <div className="sent-clips-list mt-lg" style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: 500, margin: '0 auto' }}>
                                     {clips.filter(c => selectedClips.includes(c.id)).map((clip, i) => (
@@ -462,7 +470,7 @@ export default function ClipperTools() {
                                                 <span style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>#{i + 1}</span>
                                                 <span style={{ fontWeight: 500 }}>{clip.title}</span>
                                             </div>
-                                            <span className="badge badge-success">Sent ✓</span>
+                                            <span className="badge badge-success">Queued ✓</span>
                                         </div>
                                     ))}
                                 </div>
@@ -486,12 +494,12 @@ export default function ClipperTools() {
                             <div className="render-error">
                                 <div className="error-icon">✕</div>
                                 <h4>Failed to Send</h4>
-                                <p className="text-secondary">Could not reach Joy. Please try again.</p>
+                                <p className="text-secondary">Could not submit render request. Please try again.</p>
 
                                 <div className="flex gap-md mt-lg justify-center">
                                     <button
                                         className="btn btn-error btn-lg"
-                                        onClick={() => { reset(); sendToJoy() }}
+                                        onClick={() => { reset(); handleRender() }}
                                     >
                                         ↻ Retry
                                     </button>
@@ -506,8 +514,8 @@ export default function ClipperTools() {
                         ) : (
                             <div className="render-loading">
                                 <div className="spinner" style={{ width: 48, height: 48 }}></div>
-                                <p className="mt-md">Sending {selectedClips.length} clip(s) to Joy...</p>
-                                <p className="text-muted">Joy will reply in Slack when done</p>
+                                <p className="mt-md">Rendering {selectedClips.length} clip(s)...</p>
+                                <p className="text-muted">This may take a moment</p>
                             </div>
                         )}
                     </>

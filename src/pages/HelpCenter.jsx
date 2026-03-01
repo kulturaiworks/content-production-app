@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { MEDIA_LIST, ONE_CLICK_TYPES, getTemplatesForMedia } from '../data/mediaData'
+import { useTemplates } from '../context/TemplateContext'
+import { ONE_CLICK_TYPES } from '../data/mediaData'
 
 const SLACK_WEBHOOK = import.meta.env.VITE_WEBHOOK_SLACK_HELPDESK
 
 export default function HelpCenter() {
+    const { mediaList: MEDIA_LIST, getTemplatesForMedia } = useTemplates()
     const { user } = useAuth()
 
     const [formData, setFormData] = useState({

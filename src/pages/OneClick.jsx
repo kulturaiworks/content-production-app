@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
 import { useProduction } from '../context/ProductionContext'
 import { useAuth } from '../context/AuthContext'
-import { MEDIA_LIST, getTemplatesForMedia, getVisibleFields, getFieldLabel } from '../data/mediaData'
+import { useTemplates } from '../context/TemplateContext'
+import { getVisibleFields, getFieldLabel } from '../data/mediaData'
 import { getProductionStatus } from '../lib/supabase'
 
 // n8n Webhook URL
 const WEBHOOK_URL = import.meta.env.VITE_WEBHOOK_ONE_CLICK
 const DRAFT_GEN_WEBHOOK = import.meta.env.VITE_WEBHOOK_DRAFT_GEN
-const SLACK_WEBHOOK = import.meta.env.VITE_SLACK_COPYWRITING_WEBHOOK
+const PRE_PRODS_WEBHOOK = import.meta.env.VITE_WEBHOOK_PRE_PRODS
 
 export default function OneClick() {
+    const { mediaList: MEDIA_LIST, getTemplatesForMedia } = useTemplates()
     const { status, setStatus, setOutput, setError, reset } = useProduction()
     const { user, incrementWorkCount } = useAuth()
 
@@ -140,24 +142,66 @@ export default function OneClick() {
             return
         }
 
+        if (!PRE_PRODS_WEBHOOK) {
+            alert('Missing VITE_WEBHOOK_PRE_PRODS env variable')
+            return
+        }
+
         setSendStatus('sending')
         try {
-            const userMention = user?.slackMemberId ? `<@${user.slackMemberId}>` : (user?.email || 'Unknown')
-
-            await fetch(SLACK_WEBHOOK, {
+            const response = await fetch(PRE_PRODS_WEBHOOK, {
                 method: 'POST',
-                mode: 'no-cors',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    text: `✍️ *COPYWRITING REQUEST*\n\n🎯 *Output:* Headline + Body Article\n📝 *Input Type:* Link\n👤 *Requester:* ${userMention}\n\n📄 *Content:*\n${postLink}\n\ncc: <@U0AD664M60J>`
+                    ip_media: 'one_click',
+                    output_format: 'Article',
+                    link: postLink
                 })
             })
 
+            if (!response.ok) throw new Error(`Request failed: ${response.statusText}`)
+
+            const responseData = await response.json()
+            console.log('[OneClick] Article Generation Response:', responseData)
+
+            // Parse response: Can be an array of objects or single object
+            const item = Array.isArray(responseData) ? responseData[0] : responseData
+            const rawText = item?.result || item?.article || ''
+
+            let parsedHeadline = item?.headline || ''
+            let parsedBody = item?.body || ''
+
+            if (!parsedHeadline && !parsedBody && rawText) {
+                // Heuristic: If AI outputs distinct "Headline:" and "Body:" labels
+                const hlMatch = rawText.match(/^(?:Headline|Title|Hwadline)(?:\s*\d*)?:\s*(.+)/im)
+                const bdMatch = rawText.match(/^(?:Body|Article|Content|Caption)(?:\s*\d*)?:\s*([\s\S]+)/im)
+
+                if (hlMatch && bdMatch) {
+                    parsedHeadline = hlMatch[1].trim()
+                    parsedBody = bdMatch[1].trim()
+                } else {
+                    // Fallback: Split by double newline limit 1
+                    const blocks = rawText.split(/\n\n+/)
+                    parsedHeadline = blocks[0].replace(/^(?:Option \d+|Headline|Title|Hwadline)(?:\s*\d*)?:\s*/i, '').trim()
+                    parsedBody = blocks.slice(1).join('\n\n').replace(/^(?:Body|Caption|Article|Content)(?:\s*\d*)?:\s*/i, '').trim()
+                    if (!parsedBody) parsedBody = rawText // If splitting failed, dump all text in body
+                }
+            }
+
+            setArticle({
+                headline: parsedHeadline || 'Generated Article Headline',
+                body: parsedBody || 'Generated Article Body'
+            })
+
             setSendStatus('sent')
+
+            // Auto transition to phase 2
+            setHasArticle(true)
+            setStep(2)
         } catch (error) {
-            console.error('Slack Error:', error)
+            console.error('Generate Article Error:', error)
             setSendStatus('error')
-            alert('Failed to send to Slack')
+            alert('Failed to generate article: ' + error.message)
         }
     }
 
@@ -678,16 +722,36 @@ export default function OneClick() {
             })
             if (!response.ok) throw new Error('Failed')
 
-            setContentCards(prev => prev.map(c => c.id === cardId ? { ...c, status: 'done' } : c))
+            // Try to parse JSON response (webhook may return empty body)
+            let recordId = null
+            try {
+                const result = await response.json()
+                recordId = result.record_id || result.id
+            } catch (_) {
+                // Empty or non-JSON response — that's OK
+            }
 
+            if (recordId) {
+                setContentCards(prev => prev.map(c => c.id === cardId ? { ...c, status: 'processing', recordId } : c))
+            } else {
+                setContentCards(prev => prev.map(c => c.id === cardId ? { ...c, status: 'done' } : c))
+            }
         } catch (e) {
             alert('Resubmit failed: ' + e.message)
             setContentCards(prev => prev.map(c => c.id === cardId ? { ...c, status: 'error' } : c))
         }
+
+        // Go back to Production Status view
+        setResubmitCardId(null)
+        setStep(4)
     }
 
     const handleGoToResubmit = (cardId) => {
         setResubmitCardId(cardId)
+        // Unlock the card for editing (reset status to draft)
+        setContentCards(prev => prev.map(c =>
+            c.id === cardId ? { ...c, status: 'draft', error: null } : c
+        ))
         setStep(3)
     }
 
@@ -731,37 +795,67 @@ export default function OneClick() {
 
     // Grouped Layout for Step 3 (Review Drafts)
     const renderStep3 = () => {
+        // When in resubmit mode, only show the target card
+        const cardsToShow = resubmitCardId
+            ? contentCards.filter(c => c.id === resubmitCardId)
+            : contentCards
+
         // GROUP CARDS BY MEDIA
         const groupedCards = {}
-        contentCards.forEach(card => {
+        cardsToShow.forEach(card => {
             if (!groupedCards[card.media]) groupedCards[card.media] = []
             groupedCards[card.media].push(card)
         })
 
         return (
             <div style={{ paddingBottom: 100 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                    <h3 className="form-section-title mb-0" style={{ color: '#F59E0B' }}>3. Review Drafts</h3>
-                    <button className="btn btn-secondary btn-sm" style={{ borderRadius: 8 }} onClick={() => setStep(2)}>Back to Config</button>
-                </div>
+                {resubmitCardId ? (
+                    /* Resubmit Mode Header */
+                    <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                            <div>
+                                <h3 className="form-section-title mb-0" style={{ color: '#F59E0B' }}>Editing for Resubmit</h3>
+                                <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>Edit the card below, then click Resubmit</span>
+                            </div>
+                            <button className="btn btn-secondary btn-sm" style={{ borderRadius: 8 }} onClick={handleBackToResults}>← Back to Results</button>
+                        </div>
+                        <div style={{ marginBottom: 24 }}>
+                            <button
+                                className="btn btn-primary"
+                                onClick={() => handleSubmitAll()}
+                                style={{ width: '100%', padding: '12px', fontSize: 16, borderRadius: 12, fontWeight: 'bold', background: '#F59E0B', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10 }}
+                            >
+                                ↻ Resubmit This Card
+                            </button>
+                        </div>
+                    </>
+                ) : (
+                    /* Normal Mode Header */
+                    <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                            <h3 className="form-section-title mb-0" style={{ color: '#F59E0B' }}>3. Review Drafts</h3>
+                            <button className="btn btn-secondary btn-sm" style={{ borderRadius: 8 }} onClick={() => setStep(2)}>Back to Config</button>
+                        </div>
 
-                <div style={{ marginBottom: 24 }}>
-                    <button
-                        className="btn btn-primary"
-                        onClick={() => handleSubmitAll()}
-                        disabled={status === 'producing'}
-                        style={{ width: '100%', padding: '12px', fontSize: 16, borderRadius: 12, fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10 }}
-                    >
-                        {status === 'producing' ? (
-                            <>
-                                <span className="spinner" style={{ width: 16, height: 16, borderTopColor: '#fff' }}></span>
-                                Production in Progress...
-                            </>
-                        ) : (
-                            `Submit All to Production (${contentCards.length} Cards)`
-                        )}
-                    </button>
-                </div>
+                        <div style={{ marginBottom: 24 }}>
+                            <button
+                                className="btn btn-primary"
+                                onClick={() => handleSubmitAll()}
+                                disabled={status === 'producing'}
+                                style={{ width: '100%', padding: '12px', fontSize: 16, borderRadius: 12, fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10 }}
+                            >
+                                {status === 'producing' ? (
+                                    <>
+                                        <span className="spinner" style={{ width: 16, height: 16, borderTopColor: '#fff' }}></span>
+                                        Production in Progress...
+                                    </>
+                                ) : (
+                                    `Submit All to Production (${contentCards.length} Cards)`
+                                )}
+                            </button>
+                        </div>
+                    </>
+                )}
 
                 {/* RENDER GROUPS */}
                 {Object.keys(groupedCards).map((mediaName) => {
@@ -896,26 +990,83 @@ export default function OneClick() {
                 </div>
 
                 <div style={{ padding: isCompact ? 16 : 24 }}>
-                    {/* Template Selection */}
+                    {/* Template Selection - Visual Grid */}
                     <div className="form-group" style={{ marginBottom: 16 }}>
                         {!isCompact && <label className="form-label" style={{ fontSize: 12, marginBottom: 8, color: 'var(--color-text-secondary)' }}>Template</label>}
-                        <select
-                            className="form-input"
-                            value={card.templateId}
-                            onChange={(e) => handleCardTemplateChange(card.id, e.target.value)}
-                            disabled={!['draft', 'error'].includes(card.status)}
-                            style={{
-                                padding: isCompact ? '8px 12px' : '10px 12px', fontSize: 13,
-                                borderRadius: 8, borderColor: !card.templateId ? 'var(--color-warning)' : 'var(--color-surface-border)'
-                            }}
-                        >
-                            <option value="">{isCompact ? 'Select Template...' : '-- Choose Template --'}</option>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: '8px' }}>
                             {getCardTemplates(card.media, card.contentType).map(t => (
-                                <option key={t.id} value={t.id}>
-                                    {t.display_name}
-                                </option>
+                                <div
+                                    key={t.id}
+                                    onClick={() => { if (['draft', 'error'].includes(card.status)) handleCardTemplateChange(card.id, t.id) }}
+                                    style={{
+                                        border: card.templateId === t.id ? '2px solid var(--color-primary)' : '1px solid var(--color-surface-border)',
+                                        borderRadius: '6px',
+                                        padding: '6px',
+                                        cursor: ['draft', 'error'].includes(card.status) ? 'pointer' : 'not-allowed',
+                                        background: card.templateId === t.id ? 'var(--color-surface-hover)' : 'var(--color-surface)',
+                                        transition: 'all 0.2s',
+                                        position: 'relative',
+                                        opacity: ['draft', 'error'].includes(card.status) ? 1 : 0.5
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        const el = e.currentTarget;
+                                        const preview = el.querySelector('.oc-template-preview');
+                                        if (!preview) return;
+                                        const rect = el.getBoundingClientRect();
+                                        const pw = Array.isArray(t.preview_image) ? t.preview_image.length * 250 : 350;
+                                        if (rect.right + pw + 20 < window.innerWidth) {
+                                            preview.style.left = '110%'; preview.style.right = 'auto';
+                                        } else {
+                                            preview.style.right = '110%'; preview.style.left = 'auto';
+                                        }
+                                        if (rect.top - 20 + 300 > window.innerHeight) {
+                                            preview.style.top = 'auto'; preview.style.bottom = '-10px';
+                                        } else {
+                                            preview.style.top = '-10px'; preview.style.bottom = 'auto';
+                                        }
+                                        preview.style.display = 'block';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        const preview = e.currentTarget.querySelector('.oc-template-preview');
+                                        if (preview) preview.style.display = 'none';
+                                    }}
+                                >
+                                    <div style={{ width: '100%', aspectRatio: '1/1', background: '#f1f5f9', borderRadius: '4px', marginBottom: '4px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <img
+                                            src={Array.isArray(t.preview_image) ? t.preview_image[0] : (t.preview_image || `https://placehold.co/200x200/e2e8f0/1e293b?text=${encodeURIComponent(t.display_name)}`)}
+                                            alt={t.display_name}
+                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                            onError={(e) => { e.target.onerror = null; e.target.src = `https://placehold.co/200x200/e2e8f0/1e293b?text=${encodeURIComponent(t.display_name)}` }}
+                                        />
+                                    </div>
+                                    <div style={{ fontSize: '9px', fontWeight: 600, lineHeight: '1.2', textAlign: 'center', color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {t.display_name}
+                                    </div>
+                                    {/* Hover Preview */}
+                                    <div className="oc-template-preview" style={{
+                                        display: 'none', position: 'absolute',
+                                        width: Array.isArray(t.preview_image) ? `${t.preview_image.length * 250}px` : '350px',
+                                        background: 'white', border: '1px solid var(--color-surface-border)',
+                                        borderRadius: '8px', boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+                                        zIndex: 999, padding: '6px', pointerEvents: 'none'
+                                    }}>
+                                        {Array.isArray(t.preview_image) ? (
+                                            <div style={{ display: 'flex', gap: '6px' }}>
+                                                {t.preview_image.map((url, idx) => (
+                                                    <img key={idx} src={url} alt={`Preview ${idx + 1}`} style={{ flex: 1, borderRadius: '4px', border: '1px solid #eee', maxWidth: '50%' }} />
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <img
+                                                src={t.preview_image || `https://placehold.co/400x300/e2e8f0/1e293b?text=${encodeURIComponent(t.display_name)}`}
+                                                alt="Preview" style={{ width: '100%', borderRadius: '4px', border: '1px solid #eee' }}
+                                            />
+                                        )}
+                                        <div style={{ marginTop: '6px', fontSize: '12px', fontWeight: 'bold', color: '#1e293b' }}>{t.display_name}</div>
+                                    </div>
+                                </div>
                             ))}
-                        </select>
+                        </div>
                     </div>
 
                     {/* Dynamic Fields */}
@@ -939,6 +1090,26 @@ export default function OneClick() {
                                     </div>
                                 )
                             })}
+
+                            {/* Credit Text — Always Show */}
+                            {!visibleFields.includes('credit_text') && (
+                                <div className="form-group" style={{ margin: 0 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                        <label className="form-label" style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                                            Credit Text
+                                        </label>
+                                    </div>
+                                    <input
+                                        className="form-input"
+                                        type="text"
+                                        placeholder="Credit / Source"
+                                        value={card.fields.credit_text || ''}
+                                        onChange={(e) => handleCardFieldChange(card.id, 'credit_text', e.target.value)}
+                                        disabled={isDone || isProcessing}
+                                        style={{ padding: isCompact ? '6px 10px' : '8px 12px', fontSize: 13, borderRadius: 8 }}
+                                    />
+                                </div>
+                            )}
 
                             {/* Grid UI for Character Selection (Fox Populi, etc) */}
                             {isGrid && template.asset_config.options && (
@@ -1073,12 +1244,12 @@ export default function OneClick() {
                                         {sendStatus === 'sending' ? (
                                             <>
                                                 <span className="spinner" style={{ width: 16, height: 16, borderTopColor: '#fff', marginRight: 8, display: 'inline-block' }}></span>
-                                                Sending to Joy...
+                                                Generating Article...
                                             </>
                                         ) : sendStatus === 'sent' ? (
-                                            '✓ Sent to Joy! Check Slack & Lanjutkan proses manual di bawah'
+                                            '✓ Article Generated! Lanjutkan proses di bawah'
                                         ) : (
-                                            '🤖 Send to Joy'
+                                            '📝 Generate Article'
                                         )}
                                     </button>
 
@@ -1431,7 +1602,7 @@ export default function OneClick() {
                                                                                         }}
                                                                                     >
                                                                                         <div className="flex gap-sm items-center mb-sm">
-                                                                                            <span className="text-xs font-bold text-white bg-secondary px-2 py-0.5 rounded">Slide #{num}</span>
+                                                                                            <span className="text-xs font-bold text-white bg-secondary px-2 py-half rounded">Slide #{num}</span>
                                                                                         </div>
 
                                                                                         {/* Narrative Text */}

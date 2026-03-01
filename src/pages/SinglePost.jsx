@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useProduction } from '../context/ProductionContext'
 import { useAuth } from '../context/AuthContext'
-import { MEDIA_LIST, SINGLE_POST_TYPES, getTemplatesForMedia, getVisibleFields, getFieldLabel } from '../data/mediaData'
+import { useTemplates } from '../context/TemplateContext'
+import { SINGLE_POST_TYPES, getVisibleFields, getFieldLabel } from '../data/mediaData'
 
 // n8n Webhook URL
 const WEBHOOK_URL = import.meta.env.VITE_WEBHOOK_SINGLE_POST
 
 export default function SinglePost() {
+    const { mediaList: MEDIA_LIST, getTemplatesForMedia } = useTemplates()
     const { status, setStatus, setOutput, setError, reset, startPolling, startJob } = useProduction()
     const { user, incrementWorkCount } = useAuth()
 
@@ -284,20 +286,114 @@ export default function SinglePost() {
                 {selectedContentType && (
                     <div className="form-section">
                         <h3 className="form-section-title">3. Select Template</h3>
-                        <div className="form-group">
-                            <label className="form-label">Template</label>
-                            <select
-                                className="form-input form-select"
-                                value={selectedTemplate?.id || ''}
-                                onChange={handleTemplateChange}
-                            >
-                                <option value="">-- Choose Template --</option>
-                                {templates.map(template => (
-                                    <option key={template.id} value={template.id}>
+                        <div className="template-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px' }}>
+                            {templates.map(template => (
+                                <div
+                                    key={template.id}
+                                    className={`template-card ${selectedTemplate?.id === template.id ? 'selected' : ''}`}
+                                    onClick={() => handleTemplateChange({ target: { value: template.id } })}
+                                    style={{
+                                        border: selectedTemplate?.id === template.id ? '2px solid var(--color-primary)' : '1px solid var(--color-surface-border)',
+                                        borderRadius: '8px',
+                                        padding: '10px',
+                                        cursor: 'pointer',
+                                        background: selectedTemplate?.id === template.id ? 'var(--color-surface-hover)' : 'var(--color-surface)',
+                                        transition: 'all 0.2s',
+                                        position: 'relative'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        const card = e.currentTarget;
+                                        const preview = card.querySelector('.template-preview-hover');
+                                        if (!preview) return;
+
+                                        // Calculate adaptive position
+                                        const rect = card.getBoundingClientRect();
+                                        const previewWidth = Array.isArray(template.preview_image) ? template.preview_image.length * 300 : 450;
+                                        const previewHeight = 400; // approximate
+                                        const viewportWidth = window.innerWidth;
+                                        const viewportHeight = window.innerHeight;
+
+                                        // Horizontal: prefer right, fallback to left
+                                        if (rect.right + previewWidth + 20 < viewportWidth) {
+                                            preview.style.left = '110%';
+                                            preview.style.right = 'auto';
+                                        } else {
+                                            preview.style.right = '110%';
+                                            preview.style.left = 'auto';
+                                        }
+
+                                        // Vertical: keep within viewport
+                                        const topOffset = rect.top - 20;
+                                        if (topOffset + previewHeight > viewportHeight) {
+                                            preview.style.top = 'auto';
+                                            preview.style.bottom = '-20px';
+                                        } else {
+                                            preview.style.top = '-20px';
+                                            preview.style.bottom = 'auto';
+                                        }
+
+                                        preview.style.display = 'block';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        const preview = e.currentTarget.querySelector('.template-preview-hover');
+                                        if (preview) preview.style.display = 'none';
+                                    }}
+                                >
+                                    <div className="template-thumb" style={{ width: '100%', aspectRatio: '1/1', background: '#f1f5f9', borderRadius: '4px', marginBottom: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <img
+                                            src={Array.isArray(template.preview_image) ? template.preview_image[0] : (template.preview_image || `https://placehold.co/400x400/e2e8f0/1e293b?text=${encodeURIComponent(template.display_name)}`)}
+                                            alt={template.display_name}
+                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                            onError={(e) => { e.target.onerror = null; e.target.src = `https://placehold.co/400x400/e2e8f0/1e293b?text=${encodeURIComponent(template.display_name)}` }}
+                                        />
+                                    </div>
+                                    <div className="template-name" style={{ fontSize: '11px', fontWeight: 600, lineHeight: '1.3', textAlign: 'center', color: 'var(--color-text)' }}>
                                         {template.display_name}
-                                    </option>
-                                ))}
-                            </select>
+                                    </div>
+
+                                    {/* Hover Large Preview - position set dynamically by onMouseEnter */}
+                                    <div
+                                        className="template-preview-hover"
+                                        style={{
+                                            display: 'none',
+                                            position: 'absolute',
+                                            width: Array.isArray(template.preview_image) ? `${template.preview_image.length * 300}px` : '450px',
+                                            background: 'white',
+                                            border: '1px solid var(--color-surface-border)',
+                                            borderRadius: '8px',
+                                            boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+                                            zIndex: 999,
+                                            padding: '8px',
+                                            pointerEvents: 'none'
+                                        }}
+                                    >
+                                        {Array.isArray(template.preview_image) ? (
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                {template.preview_image.map((url, idx) => (
+                                                    <img
+                                                        key={idx}
+                                                        src={url}
+                                                        alt={`Preview ${idx + 1}`}
+                                                        style={{ flex: 1, borderRadius: '4px', display: 'block', border: '1px solid #eee', maxWidth: '50%' }}
+                                                    />
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <img
+                                                src={template.preview_image || `https://placehold.co/600x400/e2e8f0/1e293b?text=${encodeURIComponent(template.display_name)}`}
+                                                alt="Preview"
+                                                style={{ width: '100%', borderRadius: '4px', display: 'block', border: '1px solid #eee' }}
+                                            />
+                                        )}
+                                        <div style={{ marginTop: '8px', fontSize: '13px', fontWeight: 'bold', color: '#1e293b' }}>{template.display_name}</div>
+                                    </div>
+                                </div>
+                            ))}
+                            {templates.length === 0 && (
+                                <div style={{ gridColumn: '1/-1', padding: '20px', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
+                                    No templates found.
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -344,20 +440,46 @@ export default function SinglePost() {
                         )}
                         <div className="content-fields">
                             {visibleFields.map(field => {
-                                const fieldType = field.startsWith('text') || field === 'credit_text' ? 'text'
-                                    : field.startsWith('image') ? 'image'
-                                        : 'video'
+                                // Check for object config (Dropdown support)
+                                const fieldConfig = selectedTemplate?.asset_config?.labels?.[field]
+                                const isObjectConfig = typeof fieldConfig === 'object' && fieldConfig !== null
+                                const label = isObjectConfig ? fieldConfig.label : (fieldConfig || getFieldLabel(selectedTemplate, field))
+
+                                // Determine field type
+                                let fieldType = 'text'
+                                if (isObjectConfig && fieldConfig.type === 'select') {
+                                    fieldType = 'select'
+                                } else if (field.startsWith('image') || field === 'image_1') {
+                                    fieldType = 'image'
+                                } else if (field.startsWith('video')) {
+                                    fieldType = 'video'
+                                } else if (field === 'credit_text') {
+                                    fieldType = 'text'
+                                }
 
                                 return (
                                     <div key={field} className="form-group">
                                         <label className="form-label">
-                                            {getFieldLabel(selectedTemplate, field)}
+                                            {label}
                                             <span className={`field-type-badge ${fieldType}`}>{fieldType}</span>
                                         </label>
-                                        {fieldType === 'text' ? (
+
+                                        {fieldType === 'select' ? (
+                                            <select
+                                                className="form-input"
+                                                value={formData[field] || ''}
+                                                onChange={(e) => handleInputChange(field, e.target.value)}
+                                                style={{ height: 'auto', padding: '12px' }}
+                                            >
+                                                <option value="" disabled>Select {label}</option>
+                                                {fieldConfig.options?.map(opt => (
+                                                    <option key={opt} value={opt}>{opt}</option>
+                                                ))}
+                                            </select>
+                                        ) : fieldType === 'text' ? (
                                             <textarea
                                                 className="form-input form-textarea"
-                                                placeholder={`Enter ${getFieldLabel(selectedTemplate, field).toLowerCase()}...`}
+                                                placeholder={`Enter ${label.toLowerCase()}...`}
                                                 value={formData[field] || ''}
                                                 onChange={(e) => handleInputChange(field, e.target.value)}
                                                 rows={field === 'credit_text' ? 2 : 3}
@@ -401,6 +523,13 @@ export default function SinglePost() {
                                 <span className="badge badge-success" style={{ fontSize: 14, padding: '8px 16px' }}>
                                     ✓ Production Complete!
                                 </span>
+                                <button
+                                    className="btn btn-secondary btn-lg"
+                                    onClick={() => reset()}
+                                    title="Edit input and submit again"
+                                >
+                                    ✎ Resubmit
+                                </button>
                                 <button
                                     className="btn btn-primary btn-lg"
                                     onClick={() => {

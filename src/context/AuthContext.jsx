@@ -1,5 +1,13 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { supabaseSignIn, supabaseSignUp, supabaseSignOut, supabaseGetUser, supabaseUpdateUser, supabaseResetPasswordForEmail } from '../lib/supabase'
+import {
+    supabaseSignIn,
+    supabaseSignUp,
+    supabaseSignOut,
+    supabaseGetUser,
+    supabaseUpdateUser,
+    supabaseResetPasswordForEmail,
+    supabaseRefreshToken
+} from '../lib/supabase'
 
 const AuthContext = createContext()
 
@@ -12,29 +20,92 @@ export function AuthProvider({ children }) {
     // Restore session on mount
     useEffect(() => {
         const restoreSession = async () => {
+            console.log('%c🔐 Auth: Initializing session restore...', 'color: #1d9bf0; font-weight: bold;')
+            setLoading(true)
+
             try {
                 const saved = localStorage.getItem(SESSION_KEY)
-                if (saved) {
-                    const session = JSON.parse(saved)
-                    const userData = await supabaseGetUser(session.access_token)
-                    if (userData && userData.id) {
-                        setUser({
-                            id: userData.id,
-                            email: userData.email,
-                            name: userData.user_metadata?.name || userData.email?.split('@')[0],
-                            slackMemberId: userData.user_metadata?.slack_member_id || localStorage.getItem('slack_member_id') || '',
-                            photoURL: userData.user_metadata?.avatar_url || userData.user_metadata?.photo_url || '',
-                            accessToken: session.access_token
-                        })
-                    } else {
-                        localStorage.removeItem(SESSION_KEY)
+                if (!saved) {
+                    console.log('🔐 Auth: No saved session found.')
+                    setLoading(false)
+                    return
+                }
+
+                let session = null
+                try {
+                    session = JSON.parse(saved)
+                } catch (e) {
+                    console.error('🔐 Auth: Session JSON parse error')
+                    localStorage.removeItem(SESSION_KEY)
+                    setLoading(false)
+                    return
+                }
+
+                if (!session || !session.access_token) {
+                    console.log('🔐 Auth: Session object invalid.')
+                    localStorage.removeItem(SESSION_KEY)
+                    setLoading(false)
+                    return
+                }
+
+                console.log('🔐 Auth: Verifying session...')
+
+                let userData = null
+                let fetchError = false
+
+                try {
+                    userData = await supabaseGetUser(session.access_token)
+                } catch (userErr) {
+                    console.warn('🔐 Auth: User fetch failed (might be network):', userErr.message)
+                    fetchError = true
+                }
+
+                // If token invalid (returns null) OR explicitly needs refresh, try it
+                if (!userData && !fetchError && session.refresh_token) {
+                    console.log('🔐 Auth: Access token expired, attempting refresh...')
+                    try {
+                        const refreshData = await supabaseRefreshToken(session.refresh_token)
+                        console.log('%c🔐 Auth: Refresh successful! ✅', 'color: #22c55e')
+
+                        // Update session
+                        session = {
+                            access_token: refreshData.access_token,
+                            refresh_token: refreshData.refresh_token
+                        }
+                        localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+
+                        // Retry user fetch
+                        userData = await supabaseGetUser(session.access_token)
+                    } catch (refreshErr) {
+                        console.error('🔐 Auth: Refresh failed:', refreshErr.message)
+                        // If it's a 4xx error, session is truly dead
+                        if (refreshErr.message.includes('invalid') || refreshErr.message.includes('expired')) {
+                            localStorage.removeItem(SESSION_KEY)
+                        }
                     }
                 }
+
+                if (userData && userData.id) {
+                    console.log('%c🔐 Auth: User session active:', 'color: #22c55e', userData.email)
+                    setUser({
+                        id: userData.id,
+                        email: userData.email,
+                        name: userData.user_metadata?.name || userData.email?.split('@')[0],
+                        slackMemberId: userData.user_metadata?.slack_member_id || localStorage.getItem('slack_member_id') || '',
+                        photoURL: userData.user_metadata?.avatar_url || userData.user_metadata?.photo_url || '',
+                        accessToken: session.access_token
+                    })
+                } else if (!fetchError) {
+                    // Only clear if confirmed invalid by server (no network error)
+                    console.log('🔐 Auth: Closing invalid session.')
+                    localStorage.removeItem(SESSION_KEY)
+                }
+
             } catch (e) {
-                console.error('Session restore failed:', e)
-                localStorage.removeItem(SESSION_KEY)
+                console.error('🔐 Auth: unexpected error:', e)
+            } finally {
+                setLoading(false)
             }
-            setLoading(false)
         }
         restoreSession()
     }, [])

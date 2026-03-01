@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { MEDIA_LIST } from '../data/mediaData'
+import { useTemplates } from '../context/TemplateContext'
 import { useAuth } from '../context/AuthContext'
 import { getProductionHistory } from '../lib/supabase'
 
 export default function History() {
+    const { mediaList: MEDIA_LIST } = useTemplates()
     const { user } = useAuth()
     const [selectedMedia, setSelectedMedia] = useState('')
     const [history, setHistory] = useState([])

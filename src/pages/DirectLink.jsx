@@ -12,6 +12,34 @@ function getFileType(file) {
     return 'other'
 }
 
+// Sanitize filename: remove emojis, special chars, unicode — keep only safe ASCII
+function sanitizeFileName(name) {
+    const lastDot = name.lastIndexOf('.')
+    const ext = lastDot !== -1 ? name.slice(lastDot) : ''
+    const base = lastDot !== -1 ? name.slice(0, lastDot) : name
+
+    // Remove emojis and non-ASCII, then strip special chars except - and _
+    let clean = base
+        .replace(/[\u{1F600}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F300}-\u{1F5FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}\u{1F1E0}-\u{1F1FF}]/gu, '')
+        .replace(/[^a-zA-Z0-9._\- ]/g, '')
+        .replace(/\s+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '')
+        .trim()
+
+    // If nothing left after sanitize, use timestamp
+    if (!clean) clean = `file_${Date.now()}`
+
+    return clean + ext.toLowerCase()
+}
+
+// Create a new File with sanitized name
+function createSanitizedFile(file) {
+    const safeName = sanitizeFileName(file.name)
+    if (safeName === file.name) return file // No change needed
+    return new File([file], safeName, { type: file.type, lastModified: file.lastModified })
+}
+
 export default function DirectLink() {
     const [files, setFiles] = useState([])
     const [uploading, setUploading] = useState(false)
@@ -68,7 +96,13 @@ export default function DirectLink() {
                 continue
             }
 
-            allFiles.push(f)
+            // Sanitize filename to prevent JSON/upload errors
+            const sanitized = createSanitizedFile(f)
+            if (sanitized.name !== f.name) {
+                showNotification(`Nama file di-rename otomatis: "${f.name}" → "${sanitized.name}"`, 'warning')
+            }
+
+            allFiles.push(sanitized)
         }
 
         setFiles(allFiles)

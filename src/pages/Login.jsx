@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
     const { login, signup, resetPassword } = useAuth()
+    const navigate = useNavigate()
     const [isLogin, setIsLogin] = useState(true)
     const [isForgot, setIsForgot] = useState(false)
     const [formData, setFormData] = useState({
@@ -38,6 +40,7 @@ export default function Login() {
                 }
             } else if (isLogin) {
                 await login(formData.email, formData.password)
+                navigate('/')
             } else {
                 if (!formData.name.trim()) {
                     setError('Name is required')
@@ -85,11 +88,21 @@ export default function Login() {
             <div className="login-card">
                 <div className="login-header">
                     <div className="login-logo">
-                        <img
-                            src="/favicon.png"
-                            alt="G2 Logo"
-                            style={{ width: 64, height: 64, objectFit: 'contain' }}
-                        />
+                        {import.meta.env.VITE_APP_CLIENT === 'RW' ? (
+                            <div style={{
+                                width: '64px', height: '64px', backgroundColor: '#D32F2F', color: 'white',
+                                fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                borderRadius: '12px', fontSize: '28px'
+                            }}>
+                                RW
+                            </div>
+                        ) : (
+                            <img
+                                src="/favicon.png"
+                                alt="G2 Logo"
+                                style={{ width: 64, height: 64, objectFit: 'contain' }}
+                            />
+                        )}
                     </div>
                     <h1 className="login-title">
                         {isForgot ? 'Reset Password' : (isLogin ? 'Welcome Back' : 'Create Account')}
@@ -97,7 +110,10 @@ export default function Login() {
                     <p className="login-subtitle">
                         {isForgot
                             ? 'Enter your email to receive reset instructions'
-                            : (isLogin ? 'Sign in to G2 Web App' : 'Get started with G2 Web App')}
+                            : (isLogin
+                                ? (import.meta.env.VITE_APP_CLIENT === 'RW' ? 'Sign in to RW Editorial App' : 'Sign in to G2 Web App')
+                                : (import.meta.env.VITE_APP_CLIENT === 'RW' ? 'Get started with RW Editorial App' : 'Get started with G2 Web App')
+                            )}
                     </p>
                 </div>
 

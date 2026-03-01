@@ -360,6 +360,24 @@ export async function supabaseSignIn(email, password) {
     return await response.json()
 }
 
+export async function supabaseRefreshToken(refreshToken) {
+    const url = `${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`
+    const headers = getHeaders()
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ refresh_token: refreshToken })
+    })
+
+    if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.error_description || err.msg || 'Token refresh failed')
+    }
+
+    return await response.json()
+}
+
 export async function supabaseSignUp(email, password, name, slackMemberId) {
     const url = `${SUPABASE_URL}/auth/v1/signup`
     const body = {

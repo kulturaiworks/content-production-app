@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useProduction } from '../context/ProductionContext'
 import { useAuth } from '../context/AuthContext'
-import { MEDIA_LIST, getTemplatesForMedia, getFieldLabel } from '../data/mediaData'
+import { useTemplates } from '../context/TemplateContext'
+import { getFieldLabel } from '../data/mediaData'
 
 // Webhook URLs
 const GENERATE_WEBHOOK = import.meta.env.VITE_WEBHOOK_CAROUSEL_GENERATE
@@ -75,6 +76,7 @@ function parseCarouselResponse(data) {
 }
 
 export default function CarouselTools() {
+    const { mediaList: MEDIA_LIST, getTemplatesForMedia } = useTemplates()
     const { reset, setError, startPolling, startJob } = useProduction()
     const { user, incrementWorkCount } = useAuth()
 
@@ -429,20 +431,82 @@ export default function CarouselTools() {
                     </div>
                 )}
 
-                {/* Template dropdown */}
+                {/* Template Visual Grid */}
                 <div className="carousel-card-template">
                     <label className="form-label text-sm">Template</label>
-                    <select
-                        className="form-input form-select"
-                        value={selectedTemplate?.id || ''}
-                        onChange={(e) => handleSetTemplate(cardKey, e.target.value)}
-                        style={{ fontSize: 13 }}
-                    >
-                        <option value="">-- Pilih Template --</option>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: '8px', marginTop: 6 }}>
                         {imageTemplates.map(t => (
-                            <option key={t.id} value={t.id}>{t.display_name}</option>
+                            <div
+                                key={t.id}
+                                onClick={() => handleSetTemplate(cardKey, t.id)}
+                                style={{
+                                    border: selectedTemplate?.id === t.id ? '2px solid var(--color-primary)' : '1px solid var(--color-surface-border)',
+                                    borderRadius: '6px',
+                                    padding: '6px',
+                                    cursor: 'pointer',
+                                    background: selectedTemplate?.id === t.id ? 'var(--color-surface-hover)' : 'var(--color-surface)',
+                                    transition: 'all 0.2s',
+                                    position: 'relative'
+                                }}
+                                onMouseEnter={(e) => {
+                                    const el = e.currentTarget;
+                                    const preview = el.querySelector('.ct-template-preview');
+                                    if (!preview) return;
+                                    const rect = el.getBoundingClientRect();
+                                    const pw = Array.isArray(t.preview_image) ? t.preview_image.length * 250 : 350;
+                                    if (rect.right + pw + 20 < window.innerWidth) {
+                                        preview.style.left = '110%'; preview.style.right = 'auto';
+                                    } else {
+                                        preview.style.right = '110%'; preview.style.left = 'auto';
+                                    }
+                                    if (rect.top - 20 + 300 > window.innerHeight) {
+                                        preview.style.top = 'auto'; preview.style.bottom = '-10px';
+                                    } else {
+                                        preview.style.top = '-10px'; preview.style.bottom = 'auto';
+                                    }
+                                    preview.style.display = 'block';
+                                }}
+                                onMouseLeave={(e) => {
+                                    const preview = e.currentTarget.querySelector('.ct-template-preview');
+                                    if (preview) preview.style.display = 'none';
+                                }}
+                            >
+                                <div style={{ width: '100%', aspectRatio: '1/1', background: '#f1f5f9', borderRadius: '4px', marginBottom: '4px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <img
+                                        src={Array.isArray(t.preview_image) ? t.preview_image[0] : (t.preview_image || `https://placehold.co/200x200/e2e8f0/1e293b?text=${encodeURIComponent(t.display_name)}`)}
+                                        alt={t.display_name}
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                        onError={(e) => { e.target.onerror = null; e.target.src = `https://placehold.co/200x200/e2e8f0/1e293b?text=${encodeURIComponent(t.display_name)}` }}
+                                    />
+                                </div>
+                                <div style={{ fontSize: '9px', fontWeight: 600, lineHeight: '1.2', textAlign: 'center', color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {t.display_name}
+                                </div>
+                                {/* Hover Preview */}
+                                <div className="ct-template-preview" style={{
+                                    display: 'none', position: 'absolute',
+                                    width: Array.isArray(t.preview_image) ? `${t.preview_image.length * 250}px` : '350px',
+                                    background: 'white', border: '1px solid var(--color-surface-border)',
+                                    borderRadius: '8px', boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+                                    zIndex: 999, padding: '6px', pointerEvents: 'none'
+                                }}>
+                                    {Array.isArray(t.preview_image) ? (
+                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                            {t.preview_image.map((url, idx) => (
+                                                <img key={idx} src={url} alt={`Preview ${idx + 1}`} style={{ flex: 1, borderRadius: '4px', border: '1px solid #eee', maxWidth: '50%' }} />
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <img
+                                            src={t.preview_image || `https://placehold.co/400x300/e2e8f0/1e293b?text=${encodeURIComponent(t.display_name)}`}
+                                            alt="Preview" style={{ width: '100%', borderRadius: '4px', border: '1px solid #eee' }}
+                                        />
+                                    )}
+                                    <div style={{ marginTop: '6px', fontSize: '12px', fontWeight: 'bold', color: '#1e293b' }}>{t.display_name}</div>
+                                </div>
+                            </div>
                         ))}
-                    </select>
+                    </div>
                 </div>
 
                 {/* Grid UI for specific templates (e.g. Fox Populi) */}

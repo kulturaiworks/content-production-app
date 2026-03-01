@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Routes, Route, NavLink, useLocation } from 're
 import { ThemeProvider, useTheme } from './context/ThemeContext'
 import { ProductionProvider, useProduction } from './context/ProductionContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { TemplateProvider } from './context/TemplateContext'
 
 // Pages
 import Dashboard from './pages/Dashboard'
@@ -271,13 +272,25 @@ function Sidebar({ isOpen, onClose }) {
         <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
             <div className="sidebar-header">
                 <div className="sidebar-logo">
-                    <img
-                        src="/g2-logo.png"
-                        alt="G2 Logo"
-                        className="sidebar-logo-icon"
-                        style={{ padding: 0, background: 'transparent', objectFit: 'contain' }}
-                    />
-                    <span className="sidebar-logo-text">Editorial V.2</span>
+                    {import.meta.env.VITE_APP_CLIENT === 'RW' ? (
+                        <div style={{
+                            width: '32px', height: '32px', backgroundColor: '#D32F2F', color: 'white',
+                            fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            borderRadius: '6px', fontSize: '16px', marginRight: '12px', flexShrink: 0
+                        }}>
+                            RW
+                        </div>
+                    ) : (
+                        <img
+                            src="/g2-logo.png"
+                            alt="G2 Logo"
+                            className="sidebar-logo-icon"
+                            style={{ padding: 0, background: 'transparent', objectFit: 'contain' }}
+                        />
+                    )}
+                    <span className="sidebar-logo-text">
+                        {import.meta.env.VITE_APP_CLIENT === 'RW' ? 'Editorial App' : 'Editorial V.2'}
+                    </span>
                 </div>
             </div>
 
@@ -309,8 +322,8 @@ function Sidebar({ isOpen, onClose }) {
             <div className="sidebar-footer">
                 <NavLink to="/profile" className="user-profile" onClick={onClose}>
                     <div className="user-avatar">
-                        {user?.photoUrl ? (
-                            <img src={user.photoUrl} alt={user.name} />
+                        {user?.photoURL ? (
+                            <img src={user.photoURL} alt={user.name} />
                         ) : (
                             user?.name?.charAt(0)?.toUpperCase() || 'U'
                         )}
@@ -348,6 +361,54 @@ function Header({ onMenuClick }) {
     )
 }
 
+// Keep-Alive Pages: All pages stay mounted, only the active one is visible.
+// This prevents in-flight requests from being cancelled when switching tabs.
+const PAGE_MAP = [
+    { path: '/', Component: Dashboard },
+    { path: '/one-click', Component: OneClick },
+    { path: '/single-post', Component: SinglePost },
+    { path: '/carousel', Component: CarouselTools },
+    { path: '/clipper', Component: ClipperTools },
+    { path: '/copywriting', Component: CopywritingTools },
+    { path: '/direct-link', Component: DirectLink },
+    { path: '/downloader', Component: Downloader },
+    { path: '/draft', Component: Draft },
+    { path: '/history', Component: History },
+    { path: '/help', Component: HelpCenter },
+    { path: '/profile', Component: Profile },
+]
+
+function KeepAlivePages() {
+    const location = useLocation()
+    const [visited, setVisited] = useState(new Set(['/']))
+
+    // Track visited pages so we only mount them on first visit (lazy mount)
+    useEffect(() => {
+        setVisited(prev => {
+            if (prev.has(location.pathname)) return prev
+            const next = new Set(prev)
+            next.add(location.pathname)
+            return next
+        })
+    }, [location.pathname])
+
+    return (
+        <>
+            {PAGE_MAP.map(({ path, Component }) => {
+                const isActive = location.pathname === path
+                const wasVisited = visited.has(path)
+                // Only mount a page once it's been visited (lazy)
+                if (!wasVisited && !isActive) return null
+                return (
+                    <div key={path} style={{ display: isActive ? 'block' : 'none' }}>
+                        <Component />
+                    </div>
+                )
+            })}
+        </>
+    )
+}
+
 // Main App Layout
 function AppLayout() {
     const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -358,6 +419,41 @@ function AppLayout() {
     useEffect(() => {
         setSidebarOpen(false)
     }, [location])
+
+    // Client Branding Logic (Favicon & Title)
+    useEffect(() => {
+        if (import.meta.env.VITE_APP_CLIENT === 'RW') {
+            document.title = 'Editorial App'
+            // Generate RW Favicon dynamically
+            try {
+                const canvas = document.createElement('canvas')
+                canvas.width = 64; canvas.height = 64
+                const ctx = canvas.getContext('2d')
+
+                // Red Background
+                ctx.fillStyle = '#D32F2F';
+                ctx.fillRect(0, 0, 64, 64)
+
+                // White Text
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 36px Arial, sans-serif'
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle'
+                ctx.fillText('RW', 32, 34)
+
+                // Set Favicon
+                let link = document.querySelector("link[rel~='icon']")
+                if (!link) {
+                    link = document.createElement('link')
+                    link.rel = 'icon'
+                    document.head.appendChild(link)
+                }
+                link.href = canvas.toDataURL()
+            } catch (e) {
+                console.error('Failed to set brand favicon', e)
+            }
+        }
+    }, [])
 
     if (loading) {
         return (
@@ -377,20 +473,7 @@ function AppLayout() {
             <div className="main-wrapper">
                 <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
                 <main className="main-content">
-                    <Routes>
-                        <Route path="/" element={<Dashboard />} />
-                        <Route path="/one-click" element={<OneClick />} />
-                        <Route path="/single-post" element={<SinglePost />} />
-                        <Route path="/carousel" element={<CarouselTools />} />
-                        <Route path="/clipper" element={<ClipperTools />} />
-                        <Route path="/copywriting" element={<CopywritingTools />} />
-                        <Route path="/direct-link" element={<DirectLink />} />
-                        <Route path="/downloader" element={<Downloader />} />
-                        <Route path="/draft" element={<Draft />} />
-                        <Route path="/history" element={<History />} />
-                        <Route path="/help" element={<HelpCenter />} />
-                        <Route path="/profile" element={<Profile />} />
-                    </Routes>
+                    <KeepAlivePages />
                 </main>
             </div>
         </div>
@@ -402,11 +485,13 @@ function App() {
     return (
         <ThemeProvider>
             <AuthProvider>
-                <ProductionProvider>
-                    <Router>
-                        <AppLayout />
-                    </Router>
-                </ProductionProvider>
+                <TemplateProvider>
+                    <ProductionProvider>
+                        <Router>
+                            <AppLayout />
+                        </Router>
+                    </ProductionProvider>
+                </TemplateProvider>
             </AuthProvider>
         </ThemeProvider>
     )
